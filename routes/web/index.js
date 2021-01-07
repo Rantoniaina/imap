@@ -1,11 +1,15 @@
 var express = require("express");
 var Imap = require("imap");
-var inspect = require("util").inspect;
+// var inspect = require("util").inspect;
+var url = require("url");
 
 var router = express.Router();
 
 router.get("/", function (req, res) {
-  res.render("home/");
+  res.render("home/", {
+    info: req.query.info,
+    error: req.query.error,
+  });
 });
 
 router.post("/signin", function (req, res) {
@@ -16,6 +20,8 @@ router.post("/signin", function (req, res) {
   var tls = req.body.tls;
 
   if (email && password && host && port) {
+    var result = [];
+
     var imap = new Imap({
       user: email,
       password,
@@ -43,33 +49,69 @@ router.post("/signin", function (req, res) {
             var buffer = "";
             stream.on("data", function (chunk) {
               buffer += chunk.toString("utf8");
+              result.push(chunk.toString("utf8"));
             });
             stream.once("end", function () {
-              console.log(
-                prefix + "Parsed header: %s",
-                inspect(Imap.parseHeader(buffer))
-              );
+              //   result.push(inspect(Imap.parseHeader(buffer)));
+              //   console.log(
+              //     prefix + "Parsed header: %s",
+              //     inspect(Imap.parseHeader(buffer))
+              //   );
             });
           });
-          msg.once("attributes", function (attrs) {
-            console.log(prefix + "Attributes: %s", inspect(attrs, false, 8));
-          });
+          //   msg.once("attributes", function (attrs) {
+          //     console.log(prefix + "Attributes: %s", inspect(attrs, false, 8));
+          //   });
           msg.once("end", function () {
             console.log(prefix + "Finished");
           });
         });
         f.once("error", function (err) {
-          console.log("Fetch error: " + err);
+            console.log('err1', err);
+          return res.redirect(
+            url.format({
+              pathname: "/",
+              query: {
+                error: err.toString(),
+              },
+            })
+          );
         });
         f.once("end", function () {
-          console.log("Done fetching all messages!");
           imap.end();
+          if (result.length > 0) {
+            return res.redirect(
+              url.format({
+                pathname: "/mails",
+                query: {
+                  mails: result,
+                },
+              })
+            );
+          }
+          if (result.length === 0) {
+            return res.redirect(
+              url.format({
+                pathname: "/",
+                query: {
+                  info: "No mail in mailbox",
+                },
+              })
+            );
+          }
         });
       });
     });
 
     imap.once("error", function (err) {
-      console.log("error: " + err);
+      return res.redirect(
+        url.format({
+          pathname: "/",
+          query: {
+            error: err.toString(),
+          },
+        })
+      );
     });
 
     imap.once("end", function () {
@@ -78,6 +120,12 @@ router.post("/signin", function (req, res) {
 
     imap.connect();
   }
+});
+
+router.get("/mails", function (req, res) {
+  res.render("mails/", {
+    data: req.query.mails,
+  });
 });
 
 module.exports = router;
